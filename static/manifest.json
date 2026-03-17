@@ -1,0 +1,19 @@
+{
+  "name": "微信公众号文章阅读助手",
+  "short_name": "文章阅读助手",
+  "description": "AI驱动的微信公众号文章分析工具",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#667eea",
+  "theme_color": "#667eea",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/static/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

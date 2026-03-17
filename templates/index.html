@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="文章阅读助手">
+    <meta name="description" content="AI驱动的微信公众号文章分析工具">
+    <title>微信公众号文章阅读助手</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192x192.png') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <header class="header">
+            <h1>📖 微信公众号文章阅读助手</h1>
+            <p class="subtitle">粘贴文章链接，AI帮你深度分析</p>
+            <div id="config-status" class="config-status"></div>
+        </header>
+
+        <!-- 输入区域 -->
+        <section class="input-section">
+            <div class="input-group">
+                <label for="article-url">文章链接</label>
+                <input type="url" id="article-url" placeholder="请粘贴微信公众号文章链接，例如：https://mp.weixin.qq.com/s/...">
+            </div>
+            
+            <!-- 模板选择区域 -->
+            <div class="template-section">
+                <div class="template-header">
+                    <label>📋 分析模板</label>
+                    <div class="template-actions">
+                        <button id="refresh-templates" class="link-btn" title="刷新模板列表">🔄</button>
+                    </div>
+                </div>
+                
+                <div class="template-selector">
+                    <select id="template-select">
+                        <option value="">-- 选择已有模板 --</option>
+                        <optgroup label="📌 内置模板" id="builtin-templates">
+                            <!-- 内置模板将在这里动态加载 -->
+                        </optgroup>
+                        <optgroup label="💾 我的模板" id="user-templates">
+                            <!-- 用户模板将在这里动态加载 -->
+                        </optgroup>
+                    </select>
+                    <button id="load-template-btn" class="btn btn-small">加载</button>
+                </div>
+
+                <div class="input-group template-input-group">
+                    <label for="custom-prompt">
+                        自定义提示词
+                        <span class="hint">（可直接编辑下方内容，或使用模板）</span>
+                    </label>
+                    <textarea id="custom-prompt" rows="10" placeholder="选择模板或在此输入自定义分析提示词...
+
+提示：模板中需要包含 {article_content} 占位符，用于插入文章内容"></textarea>
+                </div>
+
+                <div class="template-save-section">
+                    <button id="save-template-btn" class="btn btn-outline">
+                        <span>💾 另存为新模板</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button id="parse-btn" class="btn btn-primary">
+                    <span class="btn-text">🔍 解析文章</span>
+                    <span class="btn-loading" style="display: none;">解析中...</span>
+                </button>
+                <button id="analyze-btn" class="btn btn-secondary" disabled>
+                    <span class="btn-text">🤖 AI分析</span>
+                    <span class="btn-loading" style="display: none;">分析中...</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- 进度提示 -->
+        <div id="progress" class="progress" style="display: none;">
+            <div class="progress-spinner"></div>
+            <p class="progress-text">正在处理...</p>
+        </div>
+
+        <!-- 错误提示 -->
+        <div id="error-message" class="error-message" style="display: none;"></div>
+
+        <!-- 成功提示 -->
+        <div id="success-message" class="success-message" style="display: none;"></div>
+
+        <!-- 文章信息卡片 -->
+        <section id="article-info" class="article-info" style="display: none;">
+            <div class="info-card">
+                <div class="info-header">
+                    <h2 id="article-title">文章标题</h2>
+                    <div class="info-meta">
+                        <span id="article-account" class="badge">公众号</span>
+                        <span id="article-author" class="badge">作者</span>
+                        <span id="article-time" class="badge">发布时间</span>
+                        <span id="article-words" class="badge">字数</span>
+                    </div>
+                </div>
+                <div class="info-content">
+                    <div class="content-tabs">
+                        <button class="tab-btn active" data-tab="preview">📄 内容预览</button>
+                        <button class="tab-btn" data-tab="full">📑 完整内容</button>
+                    </div>
+                    <div class="tab-content">
+                        <div id="preview-tab" class="tab-panel active">
+                            <div id="article-preview" class="article-text"></div>
+                        </div>
+                        <div id="full-tab" class="tab-panel">
+                            <div id="article-full" class="article-text"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- AI分析结果 -->
+        <section id="analysis-result" class="analysis-result" style="display: none;">
+            <div class="result-card">
+                <div class="result-header">
+                    <h2>🤖 AI深度分析</h2>
+                    <button id="copy-analysis" class="btn btn-small">📋 复制结果</button>
+                </div>
+                <div id="analysis-content" class="analysis-content markdown-body"></div>
+            </div>
+        </section>
+
+        <!-- 使用说明 -->
+        <section class="usage-guide">
+            <h3>📌 使用说明</h3>
+            <ol>
+                <li>复制微信公众号文章的链接（在文章页面点击右上角「...」→「复制链接」）</li>
+                <li>将链接粘贴到上方的输入框中</li>
+                <li>点击「解析文章」按钮获取文章内容</li>
+                <li>选择已有模板或输入自定义分析提示词</li>
+                <li>点击「AI分析」按钮，等待AI生成分析报告</li>
+                <li>如果自定义提示词好用，可以点击「另存为新模板」保存起来</li>
+            </ol>
+            <div class="note">
+                <strong>提示：</strong>使用AI分析功能需要配置 DeepSeek API 密钥。请在项目目录下创建 <code>.env</code> 文件，添加：<br>
+                <code>DEEPSEEK_API_KEY=your_api_key_here</code>
+            </div>
+        </section>
+    </div>
+
+    <!-- 保存模板弹窗 -->
+    <div id="save-template-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>💾 保存新模板</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label for="new-template-name">模板名称 *</label>
+                    <input type="text" id="new-template-name" placeholder="给你的模板起个名字">
+                </div>
+                <div class="input-group">
+                    <label for="new-template-desc">模板描述（可选）</label>
+                    <input type="text" id="new-template-desc" placeholder="简要描述这个模板的用途">
+                </div>
+                <div class="input-group">
+                    <label>模板内容预览</label>
+                    <div class="template-preview" id="template-content-preview"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary modal-cancel">取消</button>
+                <button class="btn btn-primary" id="confirm-save-template">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let currentArticle = null;
+        let currentTemplates = [];
+
+        // DOM元素
+        const urlInput = document.getElementById('article-url');
+        const customPromptInput = document.getElementById('custom-prompt');
+        const templateSelect = document.getElementById('template-select');
+        const builtinTemplatesGroup = document.getElementById('builtin-templates');
+        const userTemplatesGroup = document.getElementById('user-templates');
+        const parseBtn = document.getElementById('parse-btn');
+        const analyzeBtn = document.getElementById('analyze-btn');
+        const loadTemplateBtn = document.getElementById('load-template-btn');
+        const refreshTemplatesBtn = document.getElementById('refresh-templates');
+        const saveTemplateBtn = document.getElementById('save-template-btn');
+        const progressDiv = document.getElementById('progress');
+        const errorDiv = document.getElementById('error-message');
+        const successDiv = document.getElementById('success-message');
+        const articleInfoSection = document.getElementById('article-info');
+        const analysisResultSection = document.getElementById('analysis-result');
+        const configStatusDiv = document.getElementById('config-status');
+        
+        // 弹窗元素
+        const saveModal = document.getElementById('save-template-modal');
+        const newTemplateNameInput = document.getElementById('new-template-name');
+        const newTemplateDescInput = document.getElementById('new-template-desc');
+        const templateContentPreview = document.getElementById('template-content-preview');
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            checkConfig();
+            loadTemplates();
+            setupEventListeners();
+        });
+
+        // 检查配置
+        async function checkConfig() {
+            try {
+                const response = await fetch('/api/check-config');
+                const result = await response.json();
+                
+                if (result.success) {
+                    if (result.data.ai_configured) {
+                        configStatusDiv.innerHTML = '<span class="status-success">✅ AI分析已配置</span>';
+                    } else {
+                        configStatusDiv.innerHTML = '<span class="status-warning">⚠️ AI分析未配置（需设置 DEEPSEEK_API_KEY）</span>';
+                    }
+                }
+            } catch (error) {
+                configStatusDiv.innerHTML = '<span class="status-error">❌ 无法检查配置</span>';
+            }
+        }
+
+        // 加载模板列表
+        async function loadTemplates() {
+            try {
+                const response = await fetch('/api/templates');
+                const result = await response.json();
+
+                if (result.success) {
+                    currentTemplates = result.data.templates;
+                    renderTemplateOptions();
+                }
+            } catch (error) {
+                console.error('加载模板失败:', error);
+            }
+        }
+
+        // 渲染模板选项
+        function renderTemplateOptions() {
+            // 清空现有选项
+            builtinTemplatesGroup.innerHTML = '';
+            userTemplatesGroup.innerHTML = '';
+
+            currentTemplates.forEach(template => {
+                const option = document.createElement('option');
+                option.value = template.id;
+                option.textContent = template.name;
+                option.title = template.description || '';
+
+                if (template.is_builtin) {
+                    builtinTemplatesGroup.appendChild(option);
+                } else {
+                    userTemplatesGroup.appendChild(option);
+                }
+            });
+        }
+
+        // 设置事件监听
+        function setupEventListeners() {
+            parseBtn.addEventListener('click', handleParse);
+            analyzeBtn.addEventListener('click', handleAnalyze);
+            loadTemplateBtn.addEventListener('click', loadSelectedTemplate);
+            refreshTemplatesBtn.addEventListener('click', loadTemplates);
+            saveTemplateBtn.addEventListener('click', openSaveModal);
+            document.getElementById('copy-analysis').addEventListener('click', copyAnalysis);
+            
+            // 弹窗事件
+            document.querySelector('.modal-close').addEventListener('click', closeSaveModal);
+            document.querySelector('.modal-cancel').addEventListener('click', closeSaveModal);
+            document.getElementById('confirm-save-template').addEventListener('click', saveNewTemplate);
+            
+            // 点击弹窗外部关闭
+            saveModal.addEventListener('click', (e) => {
+                if (e.target === saveModal) closeSaveModal();
+            });
+            
+            // Tab切换
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const tabName = e.target.dataset.tab;
+                    switchTab(tabName);
+                });
+            });
+        }
+
+        // 切换Tab
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === tabName);
+            });
+            document.querySelectorAll('.tab-panel').forEach(panel => {
+                panel.classList.remove('active');
+            });
+            document.getElementById(tabName + '-tab').classList.add('active');
+        }
+
+        // 显示进度
+        function showProgress(text) {
+            progressDiv.style.display = 'flex';
+            progressDiv.querySelector('.progress-text').textContent = text;
+            hideMessages();
+        }
+
+        // 隐藏进度
+        function hideProgress() {
+            progressDiv.style.display = 'none';
+        }
+
+        // 显示错误
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            successDiv.style.display = 'none';
+            hideProgress();
+        }
+
+        // 显示成功
+        function showSuccess(message) {
+            successDiv.textContent = message;
+            successDiv.style.display = 'block';
+            errorDiv.style.display = 'none';
+            hideProgress();
+            
+            // 3秒后自动隐藏
+            setTimeout(() => {
+                successDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        // 隐藏消息
+        function hideMessages() {
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+        }
+
+        // 设置按钮加载状态
+        function setButtonLoading(btn, loading) {
+            const textSpan = btn.querySelector('.btn-text');
+            const loadingSpan = btn.querySelector('.btn-loading');
+            
+            if (loading) {
+                textSpan.style.display = 'none';
+                loadingSpan.style.display = 'inline';
+                btn.disabled = true;
+            } else {
+                textSpan.style.display = 'inline';
+                loadingSpan.style.display = 'none';
+                btn.disabled = false;
+            }
+        }
+
+        // 加载选中的模板
+        async function loadSelectedTemplate() {
+            const templateId = templateSelect.value;
+            
+            if (!templateId) {
+                showError('请先选择一个模板');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/templates/${templateId}`);
+                const result = await response.json();
+
+                if (result.success) {
+                    customPromptInput.value = result.data.content;
+                    showSuccess('模板加载成功！');
+                } else {
+                    showError(result.error || '加载模板失败');
+                }
+            } catch (error) {
+                showError('网络错误：' + error.message);
+            }
+        }
+
+        // 打开保存模板弹窗
+        function openSaveModal() {
+            const content = customPromptInput.value.trim();
+            
+            if (!content) {
+                showError('请先输入模板内容');
+                return;
+            }
+
+            if (!content.includes('{article_content}')) {
+                showError('模板内容必须包含 {article_content} 占位符');
+                return;
+            }
+
+            // 显示内容预览（前200字）
+            const preview = content.substring(0, 200) + (content.length > 200 ? '...' : '');
+            templateContentPreview.textContent = preview;
+            
+            // 清空输入
+            newTemplateNameInput.value = '';
+            newTemplateDescInput.value = '';
+            
+            saveModal.style.display = 'flex';
+        }
+
+        // 关闭保存模板弹窗
+        function closeSaveModal() {
+            saveModal.style.display = 'none';
+        }
+
+        // 保存新模板
+        async function saveNewTemplate() {
+            const name = newTemplateNameInput.value.trim();
+            const description = newTemplateDescInput.value.trim();
+            const content = customPromptInput.value.trim();
+
+            if (!name) {
+                alert('请输入模板名称');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/templates', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, description, content })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    closeSaveModal();
+                    showSuccess('模板保存成功！');
+                    // 刷新模板列表
+                    await loadTemplates();
+                    // 选中新保存的模板
+                    templateSelect.value = result.data.id;
+                } else {
+                    alert(result.error || '保存失败');
+                }
+            } catch (error) {
+                alert('网络错误：' + error.message);
+            }
+        }
+
+        // 解析文章
+        async function handleParse() {
+            const url = urlInput.value.trim();
+            
+            if (!url) {
+                showError('请输入文章链接');
+                return;
+            }
+
+            setButtonLoading(parseBtn, true);
+            showProgress('正在解析文章...');
+
+            try {
+                const response = await fetch('/api/parse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    currentArticle = result.data;
+                    displayArticleInfo(currentArticle);
+                    analyzeBtn.disabled = false;
+                    hideMessages();
+                } else {
+                    showError(result.error || '解析失败');
+                }
+            } catch (error) {
+                showError('网络错误：' + error.message);
+            } finally {
+                setButtonLoading(parseBtn, false);
+                hideProgress();
+            }
+        }
+
+        // 显示文章信息
+        function displayArticleInfo(article) {
+            document.getElementById('article-title').textContent = article.title || '未知标题';
+            document.getElementById('article-account').textContent = article.account_name || '未知公众号';
+            document.getElementById('article-author').textContent = article.author || '未知作者';
+            document.getElementById('article-time').textContent = article.publish_time || '';
+            document.getElementById('article-words').textContent = (article.word_count || 0) + ' 字';
+            
+            // 内容预览（前1000字）
+            const previewText = article.content_text ? article.content_text.substring(0, 1000) + '...' : '';
+            document.getElementById('article-preview').textContent = previewText;
+            
+            // 完整内容
+            document.getElementById('article-full').textContent = article.content_text || '';
+            
+            articleInfoSection.style.display = 'block';
+            
+            // 滚动到文章信息区域
+            articleInfoSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // AI分析
+        async function handleAnalyze() {
+            if (!currentArticle || !currentArticle.content_text) {
+                showError('请先解析文章');
+                return;
+            }
+
+            const customPrompt = customPromptInput.value.trim();
+
+            setButtonLoading(analyzeBtn, true);
+            showProgress('AI正在分析文章，请稍候...');
+
+            try {
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content: currentArticle.content_text,
+                        custom_prompt: customPrompt
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    displayAnalysisResult(result.data.analysis);
+                    hideMessages();
+                } else {
+                    showError(result.error || '分析失败');
+                }
+            } catch (error) {
+                showError('网络错误：' + error.message);
+            } finally {
+                setButtonLoading(analyzeBtn, false);
+                hideProgress();
+            }
+        }
+
+        // 显示分析结果
+        function displayAnalysisResult(analysis) {
+            const contentDiv = document.getElementById('analysis-content');
+            contentDiv.innerHTML = markdownToHtml(analysis);
+            analysisResultSection.style.display = 'block';
+            
+            // 滚动到分析结果区域
+            analysisResultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // Markdown转HTML（简单版本）
+        function markdownToHtml(markdown) {
+            return markdown
+                .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                .replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>')
+                .replace(/\*(.*)\*/gim, '<em>$1</em>')
+                .replace(/`([^`]+)`/gim, '<code>$1</code>')
+                .replace(/^\- (.*$)/gim, '<li>$1</li>')
+                .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+                .replace(/\n/gim, '<br>');
+        }
+
+        // 复制分析结果
+        async function copyAnalysis() {
+            const content = document.getElementById('analysis-content').innerText;
+            try {
+                await navigator.clipboard.writeText(content);
+                const btn = document.getElementById('copy-analysis');
+                const originalText = btn.textContent;
+                btn.textContent = '✅ 已复制';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 2000);
+            } catch (error) {
+                showError('复制失败');
+            }
+        }
+
+        // 注册 Service Worker (PWA支持)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js')
+                    .then((registration) => {
+                        console.log('SW registered: ', registration);
+                    })
+                    .catch((registrationError) => {
+                        console.log('SW registration failed: ', registrationError);
+                    });
+            });
+        }
+    </script>
+</body>
+</html>
